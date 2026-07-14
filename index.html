@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学习启动器</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: #f0f4f8;
+            color: #333;
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 10px; font-size: 28px; }
+        h2 { color: #34495e; margin-bottom: 15px; font-size: 22px; }
+        .subtitle { text-align: center; color: #7f8c8d; margin-bottom: 30px; font-size: 14px; }
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.06);
+        }
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            margin: 12px 0;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.1s;
+            text-align: center;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn-primary { background: #3498db; color: white; }
+        .btn-success { background: #2ecc71; color: white; }
+        .btn-warning { background: #f39c12; color: white; }
+        .btn-danger { background: #e74c3c; color: white; }
+        .btn-info { background: #1abc9c; color: white; }
+        .btn-secondary { background: #95a5a6; color: white; }
+        .btn-outline {
+            background: white;
+            border: 2px solid #3498db;
+            color: #3498db;
+        }
+        .reminder-box {
+            background: #e8f6f3;
+            border-left: 5px solid #1abc9c;
+            padding: 20px;
+            border-radius: 8px;
+            font-size: 20px;
+            text-align: center;
+            margin: 20px 0;
+            color: #16a085;
+            font-weight: 600;
+        }
+        .timer-display {
+            font-size: 64px;
+            text-align: center;
+            color: #2c3e50;
+            font-weight: 700;
+            margin: 30px 0;
+            font-family: monospace;
+        }
+        .step-indicator {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+        .step-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ddd;
+        }
+        .step-dot.active { background: #3498db; }
+        .step-dot.done { background: #2ecc71; }
+        textarea, input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            margin: 10px 0;
+            font-family: inherit;
+        }
+        textarea:focus, input:focus {
+            outline: none;
+            border-color: #3498db;
+        }
+        .record-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        .record-table th, .record-table td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+        .record-table th { background: #f8f9fa; }
+        .hidden { display: none; }
+        .quote-box {
+            background: #fff8e1;
+            border-left: 5px solid #ffc107;
+            padding: 16px;
+            border-radius: 8px;
+            font-style: italic;
+            color: #5d4037;
+            margin: 20px 0;
+        }
+        .notification {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            color: #856404;
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .small-text { font-size: 14px; color: #7f8c8d; text-align: center; margin-top: 10px; }
+        .text-center { text-align: center; }
+        .mb-20 { margin-bottom: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container" id="app"></div>
+
+<script>
+// ========== 数据存储 ==========
+const STORAGE_KEY = 'study_starter_data_v1';
+
+function getData() {
+    const today = new Date().toISOString().split('T')[0];
+    const defaultData = {
+        weights: {
+            "手机放在其余房间": 1,
+            "打开书": 1,
+            "抄写两分钟你现在能看到的字": 1,
+            "大声朗读2分钟": 1,
+            "坐在书桌前的椅子上": 1,
+            "请背诵静夜思": 1
+        },
+        records: [],
+        lastStudyDate: null,
+        todayExplored: false,
+        totalStudyTimeToday: 0,
+        rewardTriggered: {25: false, 55: false},
+        currentDate: today
+    };
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            const data = JSON.parse(saved);
+            if (data.currentDate !== today) {
+                data.currentDate = today;
+                data.todayExplored = false;
+                data.totalStudyTimeToday = 0;
+                data.rewardTriggered = {25: false, 55: false};
+            }
+            return {...defaultData, ...data};
+        }
+    } catch(e) {}
+    return defaultData;
+}
+
+function saveData(data) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+// ========== 工具函数 ==========
+function weightedRandom(weights) {
+    const items = Object.keys(weights);
+    const total = Object.values(weights).reduce((a, b) => a + b, 0);
+    let random = Math.random() * total;
+    for (let item of items) {
+        random -= weights[item];
+        if (random <= 0) return item;
+    }
+    return items[0];
+}
+
+function formatTime(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    return `${d.getMonth()+1}月${d.getDate()}日`;
+}
+
+function getYesterdayDate() {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0];
+}
+
+// ========== 名言库 ==========
+const quotes = [
+    "数学家华罗庚：聪明在于学习，天才在于积累。",
+    "物理学家爱因斯坦：学习知识要善于思考，思考，再思考。",
+    "化学家居里夫人：我们应该不虚度一生，应该能够说：'我已经做了我能做的事'。",
+    "数学家陈省身：数学是一门演绎的学问，从一组公设，经过逻辑的推理，获得结论。",
+    "物理学家费曼：如果你认为自己理解了某个东西，那就试着把它教给别人。",
+    "数学家陶哲轩：解决问题时，先尝试最简单的情况。",
+    "化学家拉瓦锡：没有充分的实验，任何猜测都是无价值的。",
+    "物理学家波尔：所谓专家，就是在一个很窄的领域里犯过所有错误的人。",
+    "数学家伽罗瓦：一个数学家越能脱离具体例子进行推理，他的思想就越有力量。",
+    "生物学家达尔文：我学到的任何有价值的知识，都是由自学中得来的。"
+];
+
+// ========== 全局状态 ==========
+let app = document.getElementById('app');
+let timerInterval = null;
+let studyTimerInterval = null;
+let studyStartTime = null;
+
+// ========== 启动页 ==========
+function renderStart() {
+    const data = getData();
+    
+    let yesterdayReminder = '';
+    const yesterday = getYesterdayDate();
+    if (data.lastStudyDate === yesterday) {
+        const yesterdayRecords = data.records.filter(r => r.date === yesterday);
+        if (yesterdayRecords.length > 0) {
+            const contents = yesterdayRecords.map(r => r.content).join('、');
+            yesterdayReminder = `
+                <div class="notification">
+                    <strong>📋 昨日回顾</strong><br>
+                    ${formatDate(yesterday)}你学习了：${contents}<br>
+                    请试着复述一下你记得的内容。
+                </div>
+            `;
+        }
+    }
+    
+    const reminder = weightedRandom(data.weights);
+    
+    app.innerHTML = `
+        <h1>🚀 学习启动器</h1>
+        <p class="subtitle">世界很大，放手去学</p>
+        ${yesterdayReminder}
+        <div class="card">
+            <h2>启动提醒</h2>
+            <div class="reminder-box">${reminder}</div>
+            <button class="btn btn-primary" onclick="startCountdown('${reminder.replace(/'/g, "\\'")}')">⏱️ 开始2分钟</button>
+        </div>
+        <div class="card">
+            <h2>📊 学习记录</h2>
+            <button class="btn btn-info" onclick="renderRecords()">查看全部记录</button>
+        </div>
+    `;
+}
+
+function startCountdown(reminder) {
+    let seconds = 120;
+    app.innerHTML = `
+        <h1>⏱️ 启动倒计时</h1>
+        <div class="card">
+            <div class="reminder-box">${reminder}</div>
+            <div class="timer-display" id="countdown">${formatTime(seconds)}</div>
+            <p class="small-text">请执行上方提醒，2分钟后进入学习</p>
+        </div>
+    `;
+    
+    timerInterval = setInterval(() => {
+        seconds--;
+        const el = document.getElementById('countdown');
+        if (el) el.textContent = formatTime(seconds);
+        if (seconds <= 0) {
+            clearInterval(timerInterval);
+            renderAfterCountdown(reminder);
+        }
+    }, 1000);
+}
+
+function renderAfterCountdown(reminder) {
+    app.innerHTML = `
+        <h1>✅ 2分钟完成</h1>
+        <div class="card">
+            <p class="text-center mb-20" style="font-size:18px;">
+                "${reminder}" 已完成
+            </p>
+            <h2 class="text-center mb-20">这个提醒对你有用吗？</h2>
+            <button class="btn btn-success" onclick="rateReminder('${reminder.replace(/'/g, "\\'")}', true)">👍 有用</button>
+            <button class="btn btn-outline" onclick="rateReminder('${reminder.replace(/'/g, "\\'")}', false)">👎 没用</button>
+        </div>
+    `;
+}
+
+function rateReminder(reminder, isUseful) {
+    const data = getData();
+    if (isUseful) {
+        data.weights[reminder] = Math.min(data.weights[reminder] + 0.5, 5);
+    } else {
+        data.weights[reminder] = Math.max(data.weights[reminder] - 0.3, 0.2);
+    }
+    saveData(data);
+    
+    app.innerHTML = `
+        <h1>✅ 反馈已记录</h1>
+        <div class="card">
+            <p class="text-center mb-20" style="font-size:18px;">
+                是否继续坚持下去？
+            </p>
+            <button class="btn btn-success" onclick="renderMenu()">💪 坚持下去</button>
+            <button class="btn btn-secondary" onclick="renderEnd()">😴 今天就到这里</button>
+        </div>
+    `;
+}
+
+// ========== 主菜单 ==========
+function renderMenu() {
+    studyStartTime = Date.now();
+    startStudyTimer();
+    
+    app.innerHTML = `
+        <h1>📚 选择学习模式</h1>
+        <div class="card">
+            <button class="btn btn-primary" onclick="renderBackupMenu()">📖 背诵</button>
+            <button class="btn btn-success" onclick="renderExercise()">✏️ 做题</button>
+            <button class="btn btn-warning" onclick="renderReview()">🔍 复盘</button>
+            <button class="btn btn-secondary" onclick="renderEnd()">🏁 结束今天</button>
+        </div>
+    `;
+}
+
+function startStudyTimer() {
+    const data = getData();
+    studyTimerInterval = setInterval(() => {
+        data.totalStudyTimeToday += 1;
+        const mins = Math.floor(data.totalStudyTimeToday / 60);
+        
+        if (!data.rewardTriggered[25] && mins >= 25) {
+            data.rewardTriggered[25] = true;
+            saveData(data);
+            clearInterval(studyTimerInterval);
+            studyStartTime = null;
+            renderReward(25);
+            return;
+        }
+        if (!data.rewardTriggered[55] && mins >= 55) {
+            data.rewardTriggered[55] = true;
+            saveData(data);
+            clearInterval(studyTimerInterval);
+            studyStartTime = null;
+            renderReward(55);
+            return;
+        }
+        saveData(data);
+    }, 1000);
+}
+
+function stopStudyTimer() {
+    if (studyTimerInterval) {
+        clearInterval(studyTimerInterval);
+        studyTimerInterval = null;
+    }
+    studyStartTime = null;
+}
+
+// ========== 背诵 ==========
+function renderBackupMenu() {
+    app.innerHTML = `
+        <h1>📖 背诵模式</h1>
+        <div class="card">
+            <button class="btn btn-primary" onclick="renderBackupWrite()">📝 默写背诵（单词类）</button>
+            <button class="btn btn-info" onclick="renderBackupUnderstand()">📋 理解背诵（文段类）</button>
+            <button class="btn btn-secondary" onclick="renderMenu()">⬅️ 返回</button>
+        </div>
+    `;
+}
+
+function renderBackupWrite() {
+    let step = 1;
+    const totalSteps = 4;
+    const steps = ['开始背诵', '提醒默写', '二次背诵', '提醒默写'];
+    
+    window.backupWriteNext = function() {
+        step++;
+        render();
+    };
+    window.backupWriteSave = function() {
+        saveRecord('背诵', '默写背诵', '完成', '');
+    };
+    
+    function render() {
+        let content = '';
+        if (step === 1) content = `<p>请开始背诵你要记住的内容。背诵完成后点击下一步。</p>`;
+        else if (step === 2) content = `<p>请合上书本/资料，尝试默写你刚才背诵的内容。</p><textarea placeholder="在这里默写..." rows="6"></textarea>`;
+        else if (step === 3) content = `<p>对照你默写的内容，查漏补缺，进行二次背诵。</p>`;
+        else if (step === 4) content = `<p>再次合上资料，进行第二次默写。</p><textarea placeholder="在这里第二次默写..." rows="6"></textarea>`;
+        
+        app.innerHTML = `
+            <h1>📝 默写背诵</h1>
+            <div class="step-indicator">
+                ${steps.map((s, i) => `<div class="step-dot ${i+1 < step ? 'done' : ''} ${i+1 === step ? 'active' : ''}"></div>`).join('')}
+            </div>
+            <div class="card">
+                <h2>步骤 ${step}/${totalSteps}: ${steps[step-1]}</h2>
+                ${content}
+                ${step < totalSteps ? 
+                    `<button class="btn btn-primary" onclick="backupWriteNext()">下一步</button>` :
+                    `<button class="btn btn-success" onclick="backupWriteSave()">完成并保存</button>`
+                }
+                <button class="btn btn-secondary" onclick="renderMenu()">⬅️ 返回菜单</button>
+            </div>
+        `;
+    }
+    render();
+}
+
+function renderBackupUnderstand() {
+    let step = 1;
+    const totalSteps = 5;
+    const steps = ['整体文段通读', '画逻辑结构加分组', '提醒背诵', '检查背诵结果', '二次背诵'];
+    
+    window.backupUnderstandNext = function() {
+        step++;
+        render();
+    };
+    window.backupUnderstandSave = function() {
+        saveRecord('背诵', '理解背诵', '完成', '');
+    };
+    
+    function render() {
+        let content = '';
+        if (step === 1) content = `<p>请通读整段文字，了解大意。</p>`;
+        else if (step === 2) content = `<p>请在纸上画出这段文字的逻辑结构，并分组记忆。</p><textarea placeholder="在这里写下逻辑结构和分组..." rows="6"></textarea>`;
+        else if (step === 3) content = `<p>根据逻辑结构，尝试背诵。</p>`;
+        else if (step === 4) content = `<p>检查背诵结果，记录漏掉或错误的地方。</p><textarea placeholder="记录背诵情况..." rows="4"></textarea>`;
+        else if (step === 5) content = `<p>针对薄弱环节进行二次背诵。</p>`;
+        
+        app.innerHTML = `
+            <h1>📋 理解背诵</h1>
+            <div class="step-indicator">
+                ${steps.map((s, i) => `<div class="step-dot ${i+1 < step ? 'done' : ''} ${i+1 === step ? 'active' : ''}"></div>`).join('')}
+            </div>
+            <div class="card">
+                <h2>步骤 ${step}/${totalSteps}: ${steps[step-1]}</h2>
+                ${content}
+                ${step < totalSteps ? 
+                    `<button class="btn btn-primary" onclick="backupUnderstandNext()">下一步</button>` :
+                    `<button class="btn btn-success" onclick="backupUnderstandSave()">完成并保存</button>`
+                }
+                <button class="btn btn-secondary" onclick="renderMenu()">⬅️ 返回菜单</button>
+            </div>
+        `;
+    }
+    render();
+}
+
+// ========== 做题 ==========
+let exerciseTime = 0;
+let exerciseContent = '';
+
+function renderExercise() {
+    app.innerHTML = `
+        <h1>✏️ 做题模式</h1>
+        <div class="card">
+            <h2>请输入做题信息</h2>
+            <input type="text" id="exerciseContent" placeholder="做什么题？例如：资料分析20题">
+            <input type="number" id="exerciseTime" placeholder="预计用时（分钟）" min="1" max="180">
+            <button class="btn btn-success" onclick="startExercise()">开始倒计时</button>
+            <button class="btn btn-secondary" onclick="renderMenu()">⬅️ 返回</button>
+        </div>
+    `;
+}
+
+function startExercise() {
+    exerciseContent = document.getElementById('exerciseContent').value || '未命名练习';
+    const mins = parseInt(document.getElementById('exerciseTime').value) || 25;
+    exerciseTime = mins * 60;
+    
+    stopStudyTimer();
+    
+    app.innerHTML = `
+        <h1>⏱️ 做题中</h1>
+        <div class="card">
+            <p class="text-center" style="font-size:18px; margin-bottom:10px;">${exerciseContent}</p>
+            <div class="timer-display" id="exerciseTimer">${formatTime(exerciseTime)}</div>
+            <button class="btn btn-danger" onclick="endExercise()">提前结束</button>
+        </div>
+    `;
+    
+    timerInterval = setInterval(() => {
+        exerciseTime--;
+        const el = document.getElementById('exerciseTimer');
+        if (el) el.textContent = formatTime(exerciseTime);
+        if (exerciseTime <= 0) {
+            clearInterval(timerInterval);
+            endExercise();
+        }
+    }, 1000);
+}
+
+function endExercise() {
+    clearInterval(timerInterval);
+    renderExerciseRecord();
+}
+
+function renderExerciseRecord() {
+    app.innerHTML = `
+        <h1>📝 做题记录</h1>
+        <div class="card">
+            <h2>完成情况</h2>
+            <textarea id="completion" placeholder="完成了多少？正确率如何？" rows="3"></textarea>
+            <h2>可以改进的部分</h2>
+            <textarea id="improvement" placeholder="哪里可以做得更好？" rows="3"></textarea>
+            <button class="btn btn-success" onclick="saveExerciseRecord()">保存记录</button>
+            <button class="btn btn-secondary" onclick="renderMenu()">⬅️ 不保存，返回</button>
+        </div>
+    `;
+}
+
+function saveExerciseRecord() {
+    const completion = document.getElementById('completion').value;
+    const improvement = document.getElementById('improvement').value;
+    saveRecord('做题', exerciseContent, completion, improvement);
+    
+    studyStartTime = Date.now();
+    startStudyTimer();
+}
+
+// ========== 复盘 ==========
+function renderReview() {
+    let step = 1;
+    const totalSteps = 5;
+    const steps = [
+        '每道题涉及知识写到旁边',
+        '学习不熟练不理解的知识点',
+        '复述刚才学习的知识点',
+        '整理知道但不会做的题',
+        '记录粗心出错的地方'
+    ];
+    
+    window.reviewNext = function() {
+        step++;
+        render();
+    };
+    window.reviewSave = function() {
+        saveRecord('复盘', '复盘练习', '完成5步复盘', '');
+    };
+    window.reviewQuickSave = function() {
+        const textarea = app.querySelector('textarea');
+        if (textarea && textarea.value) {
+            const data = getData();
+            data.records.push({
+                date: data.currentDate,
+                type: '复盘记录',
+                content: textarea.value.substring(0, 50) + '...',
+                completion: '已记录',
+                improvement: '',
+                timestamp: new Date().toISOString()
+            });
+            saveData(data);
+            alert('已保存到记录');
+        }
+    };
+    
+    function render() {
+        let content = '';
+        if (step === 1) content = `<p>请把每道题涉及的知识点写在题目旁边。</p><textarea placeholder="记录知识点..." rows="6"></textarea>`;
+        else if (step === 2) content = `<p>针对不熟练或不理解的知识点进行学习。</p><textarea placeholder="学习了哪些知识点？" rows="4"></textarea>`;
+        else if (step === 3) content = `<p>请尝试复述你刚才学习的知识点（执行记录功能）。</p><textarea placeholder="复述内容..." rows="4"></textarea>`;
+        else if (step === 4) content = `<p>整理"知道知识点但不会做"的题，对照答案发现思路差异。</p><textarea placeholder="记录思路差异..." rows="4"></textarea>`;
+        else if (step === 5) content = `<p>记录粗心出错的地方（执行记录功能）。</p><textarea placeholder="记录粗心错误..." rows="4"></textarea>`;
+        
+        const isRecordStep = (step === 3 || step === 5);
+        
+        app.innerHTML = `
+            <h1>🔍 复盘模式</h1>
+            <div class="step-indicator">
+                ${steps.map((s, i) => `<div class="step-dot ${i+1 < step ? 'done' : ''} ${i+1 === step ? 'active' : ''}"></div>`).join('')}
+            </div>
+            <div class="card">
+                <h2>步骤 ${step}/${totalSteps}: ${steps[step-1]}</h2>
+                ${content}
+                ${isRecordStep ? `<button class="btn btn-info" onclick="reviewQuickSave()">💾 记录并保存当前内容</button>` : ''}
+                ${step < totalSteps ? 
+                    `<button class="btn btn-primary" onclick="reviewNext()">下一步</button>` :
+                    `<button class="btn btn-success" onclick="reviewSave()">完成并保存</button>`
+                }
+                <button class="btn btn-secondary" onclick="renderMenu()">⬅️ 返回菜单</button>
+            </div>
+        `;
+    }
+    render();
+}
+
+// ========== 保存记录 ==========
+function saveRecord(type, content, completion, improvement) {
+    const data = getData();
+    data.records.push({
+        date: data.currentDate,
+        type: type,
+        content: content,
+        completion: completion,
+        improvement: improvement,
+        timestamp: new Date().toISOString()
+    });
+    data.lastStudyDate = data.currentDate;
+    saveData(data);
+    
+    stopStudyTimer();
+    renderAfterSave();
+}
+
+function renderAfterSave() {
+    app.innerHTML = `
+        <h1>✅ 记录已保存</h1>
+        <div class="card">
+            <p class="text-center" style="font-size:18px; margin-bottom:20px;">学习记录已保存！</p>
+            <button class="btn btn-primary" onclick="renderMenu()">🔄 继续学习</button>
+            <button class="btn btn-secondary" onclick="renderEnd()">🏁 结束今天</button>
+        </div>
+    `;
+}
+
+// ========== 小奖励 ==========
+function renderReward(minutes) {
+    const rewards = [
+        {name: '整理书桌', desc: '花5分钟整理你的书桌'},
+        {name: '画一幅画', desc: '画一幅你脑子里马上想到的画'},
+        {name: '水的广告词', desc: '品尝你的水并为它想一段广告词（道具没有请闭眼休息5分钟）'},
+        {name: '给笔起名', desc: '给你的笔起个名字（道具没有请闭眼休息5分钟）'}
+    ];
+    const reward = rewards[Math.floor(Math.random() * rewards.length)];
+    
+    app.innerHTML = `
+        <h1>🎉 ${minutes}分钟达成！</h1>
+        <div class="card">
+            <h2>小奖励时间（5分钟）</h2>
+            <div class="reminder-box" style="background:#fff3e0; border-color:#ff9800; color:#e65100;">
+                ${reward.name}<br>
+                <span style="font-size:16px; font-weight:normal;">${reward.desc}</span>
+            </div>
+            <button class="btn btn-success" onclick="startRewardTimer()">开始5分钟奖励</button>
+            <button class="btn btn-secondary" onclick="skipReward()">跳过奖励</button>
+        </div>
+    `;
+}
+
+let rewardTime = 300;
+
+function startRewardTimer() {
+    rewardTime = 300;
+    app.innerHTML = `
+        <h1>🎁 奖励时间</h1>
+        <div class="card">
+            <div class="timer-display" id="rewardTimer">${formatTime(rewardTime)}</div>
+            <p class="small-text">享受你的奖励时间吧</p>
+        </div>
+    `;
+    
+    timerInterval = setInterval(() => {
+        rewardTime--;
+        const el = document.getElementById('rewardTimer');
+        if (el) el.textContent = formatTime(rewardTime);
+        if (rewardTime <= 0) {
+            clearInterval(timerInterval);
+            app.innerHTML = `
+                <h1>✅ 奖励结束</h1>
+                <div class="card">
+                    <button class="btn btn-primary" onclick="renderMenu()">🔄 继续学习</button>
+                    <button class="btn btn-secondary" onclick="renderEnd()">🏁 结束今天</button>
+                </div>
+            `;
+        }
+    }, 1000);
+}
+
+function skipReward() {
+    app.innerHTML = `
+        <h1>⏭️ 已跳过奖励</h1>
+        <div class="card">
+            <button class="btn btn-primary" onclick="renderMenu()">🔄 继续学习</button>
+            <button class="btn btn-secondary" onclick="renderEnd()">🏁 结束今天</button>
+        </div>
+    `;
+}
+
+// ========== 结束 ==========
+function renderEnd() {
+    const data = getData();
+    let exploreHtml = '';
+    
+    if (!data.todayExplored) {
+        const quote = quotes[Math.floor(Math.random() * quotes.length)];
+        exploreHtml = `
+            <div class="card">
+                <h2>🌟 额外探索</h2>
+                <div class="quote-box">${quote}</div>
+                <button class="btn btn-info" onclick="markExplored()">已阅读</button>
+            </div>
+        `;
+    } else {
+        exploreHtml = `
+            <div class="card">
+                <h2>🌟 今日探索已完成</h2>
+                <p>今天已经看过额外探索内容啦！</p>
+            </div>
+        `;
+    }
+    
+    const totalMins = Math.floor(data.totalStudyTimeToday / 60);
+    
+    app.innerHTML = `
+        <h1>🏁 今日学习结束</h1>
+        <div class="card">
+            <p class="text-center" style="font-size:18px;">
+                今天共学习 ${totalMins} 分钟<br><br>
+                做得好！或许可以奖励自己20分钟散步或喜欢的运动。
+            </p>
+            <button class="btn btn-success" onclick="renderStart()">📋 返回首页</button>
+        </div>
+        ${exploreHtml}
+    `;
+}
+
+function markExplored() {
+    const data = getData();
+    data.todayExplored = true;
+    saveData(data);
+    renderEnd();
+}
+
+// ========== 查看记录 ==========
+function renderRecords() {
+    const data = getData();
+    const records = data.records.slice().reverse();
+    
+    let tableHtml = '';
+    if (records.length === 0) {
+        tableHtml = '<p style="text-align:center; color:#999;">暂无记录</p>';
+    } else {
+        tableHtml = `
+            <table class="record-table">
+                <tr>
+                    <th>日期</th>
+                    <th>类型</th>
+                    <th>内容</th>
+                    <th>完成情况</th>
+                </tr>
+                ${records.map(r => `
+                    <tr>
+                        <td>${r.date}</td>
+                        <td>${r.type}</td>
+                        <td>${r.content}</td>
+                        <td>${r.completion}</td>
+                    </tr>
+                `).join('')}
+            </table>
+        `;
+    }
+    
+    app.innerHTML = `
+        <h1>📊 学习记录</h1>
+        <div class="card">
+            ${tableHtml}
+            <button class="btn btn-secondary" onclick="renderStart()" style="margin-top:20px;">⬅️ 返回</button>
+        </div>
+    `;
+}
+
+// ========== 初始化 ==========
+renderStart();
+</script>
+</body>
+</html>
